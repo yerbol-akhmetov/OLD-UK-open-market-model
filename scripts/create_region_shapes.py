@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 import geopandas as gpd
+import pandas as pd
 from shapely.ops import split
 
 # Set up logging
@@ -480,7 +481,7 @@ if __name__ == "__main__":
             print(f"- Average area: {regions.geometry.area.mean() / 1000000:.1f} km²")
 
         # Clean regions with appropriate threshold
-        min_area = 100 * 1000000  # 1 km² in square meters
+        min_area = 1000000  # 1 km² in square meters
         print(f"\nCleaning regions (removing regions < {min_area/1000000:.0f} km²)...")
         cleaned_regions = clean_regions(regions, min_area_threshold=min_area)
 
