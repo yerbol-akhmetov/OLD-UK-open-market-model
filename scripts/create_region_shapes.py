@@ -14,6 +14,7 @@ from pathlib import Path
 import geopandas as gpd
 import pandas as pd
 from shapely.ops import split
+from shapely.geometry import Point
 
 # Set up logging
 logging.basicConfig(
@@ -386,6 +387,85 @@ def clean_regions(regions_gdf, min_area_threshold=1000):
     return regions_gdf
 
 
+def filter_regions_with_powerplants(regions_gdf, powerplants_path):
+    """
+    Filter regions to keep only those that contain powerplants.
+    
+    Args:
+        regions_gdf (geopandas.GeoDataFrame): Regions to filter
+        powerplants_path (str): Path to powerplants CSV file
+        
+    Returns:
+        geopandas.GeoDataFrame: Filtered regions containing powerplants
+    """
+    logger.info(f"Loading powerplants from: {powerplants_path}")
+    
+    try:
+        # Load powerplants data
+        powerplants_df = pd.read_csv(powerplants_path)
+        logger.info(f"Loaded {len(powerplants_df)} powerplants")
+        
+        # Check for required columns
+        if 'lat' not in powerplants_df.columns or 'lon' not in powerplants_df.columns:
+            logger.error("Powerplants file must contain 'lat' and 'lon' columns")
+            return regions_gdf
+        
+        # Remove rows with missing coordinates
+        powerplants_df = powerplants_df.dropna(subset=['lat', 'lon'])
+        logger.info(f"After removing missing coordinates: {len(powerplants_df)} powerplants")
+        
+        if len(powerplants_df) == 0:
+            logger.warning("No powerplants with valid coordinates found")
+            return regions_gdf
+        
+        # Create GeoDataFrame from powerplants
+        powerplant_geometries = [Point(lon, lat) for lon, lat in zip(powerplants_df['lon'], powerplants_df['lat'])]
+        powerplants_gdf = gpd.GeoDataFrame(
+            powerplants_df, 
+            geometry=powerplant_geometries, 
+            crs='EPSG:4326'  # Assuming lat/lon coordinates are in WGS84
+        )
+        
+        # Convert powerplants to same CRS as regions
+        if regions_gdf.crs != powerplants_gdf.crs:
+            powerplants_gdf = powerplants_gdf.to_crs(regions_gdf.crs)
+            logger.info(f"Converted powerplants CRS from EPSG:4326 to {regions_gdf.crs}")
+        
+        # Find regions that contain powerplants
+        regions_with_powerplants = []
+        powerplant_count_per_region = []
+        
+        for idx, region in regions_gdf.iterrows():
+            # Check which powerplants fall within this region
+            powerplants_in_region = powerplants_gdf[powerplants_gdf.geometry.within(region.geometry)]
+            
+            if len(powerplants_in_region) > 0:
+                regions_with_powerplants.append(region)
+                powerplant_count_per_region.append(len(powerplants_in_region))
+                logger.info(f"Region {region.get('region_id', idx)} contains {len(powerplants_in_region)} powerplants")
+            else:
+                logger.debug(f"Region {region.get('region_id', idx)} contains no powerplants - removing")
+        
+        if regions_with_powerplants:
+            # Create new GeoDataFrame with only regions containing powerplants
+            filtered_regions = gpd.GeoDataFrame(regions_with_powerplants, crs=regions_gdf.crs)
+            filtered_regions['powerplant_count'] = powerplant_count_per_region
+            filtered_regions = filtered_regions.reset_index(drop=True)
+            
+            logger.info(f"Filtered regions: {len(regions_gdf)} -> {len(filtered_regions)} (kept only regions with powerplants)")
+            logger.info(f"Total powerplants in kept regions: {sum(powerplant_count_per_region)}")
+            
+            return filtered_regions
+        else:
+            logger.warning("No regions contain powerplants! Keeping all regions.")
+            return regions_gdf
+            
+    except Exception as e:
+        logger.error(f"Error filtering regions with powerplants: {e}")
+        logger.warning("Continuing with unfiltered regions")
+        return regions_gdf
+
+
 def save_regions(regions_gdf, output_path):
     """
     Save regions to GeoJSON file.
@@ -485,8 +565,14 @@ if __name__ == "__main__":
         print(f"\nCleaning regions (removing regions < {min_area/1000000:.0f} km²)...")
         cleaned_regions = clean_regions(regions, min_area_threshold=min_area)
 
+        # Filter regions to keep only those with powerplants
+        powerplants_path = base_dir / "data" / "powerplants_s_100.csv"
+        print(f"\nFiltering regions to keep only those with powerplants...")
+        print(f"Using powerplants data from: {powerplants_path}")
+        final_regions = filter_regions_with_powerplants(cleaned_regions, powerplants_path)
+
         # Save results
-        save_regions(cleaned_regions, output_path)
+        save_regions(final_regions, output_path)
 
         # Print final summary
         print("\n" + "=" * 60)
@@ -496,14 +582,16 @@ if __name__ == "__main__":
         print(f"Raw boundary features: {len(raw_boundary_lines)}")
         print(f"Valid boundary features: {len(boundary_lines)}")
         print(f"Initial regions: {len(regions)}")
-        print(f"Final regions (after cleaning): {len(cleaned_regions)}")
+        print(f"Regions after cleaning: {len(cleaned_regions)}")
+        print(f"Final regions (with powerplants): {len(final_regions)}")
         print(f"Output file: {output_path}")
 
-        if len(cleaned_regions) > 1:
-            print("Region areas (km²):")
-            for i, region in cleaned_regions.iterrows():
+        if len(final_regions) > 1:
+            print("Final region details:")
+            for i, region in final_regions.iterrows():
                 area_km2 = region.geometry.area / 1000000
-                print(f"  - {region['region_id']}: {area_km2:.1f} km²")
+                powerplant_count = region.get('powerplant_count', 'N/A')
+                print(f"  - {region['region_id']}: {area_km2:.1f} km² ({powerplant_count} powerplants)")
 
         print("=" * 60)
 
