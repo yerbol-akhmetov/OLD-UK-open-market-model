@@ -149,8 +149,8 @@ def save_regions(regions_gdf, output_file):
 def main():
     """Main function"""
     # Input and output files
-    input_file = "data/gis_data/1km2_region_shapes.geojson"
-    output_file = "data/gis_data/manually_merged_regions.geojson"
+    input_file = "results/region_shapes.geojson"
+    output_file = "results/manually_merged_region_shapes.geojson"
     
     # Define merge groups as specified (updated list)
     merge_groups = [
