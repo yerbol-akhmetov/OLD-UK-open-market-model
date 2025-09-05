@@ -478,7 +478,9 @@ def save_regions(regions_gdf, output_path):
         logger.info(f"Saving regions to: {output_path}")
 
         # Ensure output directory exists
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        output_dir = Path(output_path).parent
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Created directory: {output_dir}")
 
         # Convert back to WGS84 for better map compatibility
         regions_wgs84 = regions_gdf.to_crs("EPSG:4326")
@@ -497,12 +499,14 @@ if __name__ == "__main__":
     # Define file paths
     base_dir = Path(__file__).parent.parent
     data_dir = base_dir / "data" / "gis_data"
+    results_dir = base_dir / "results"
 
     country_shapes_path = data_dir / "country_shapes.geojson"
     boundary_lines_path = (
         data_dir / "etys-boundary-gis-data-mar25" / "ETYS boundary GIS data Mar25.shp"
     )
-    output_path = data_dir / "region_shapes.geojson"
+    output_path_all = results_dir / "region_shapes.geojson"
+    output_path_no_powerplants = results_dir / "region_shapes_no_powerplants.geojson"
 
     try:
         # Load data
@@ -560,19 +564,24 @@ if __name__ == "__main__":
             )
             print(f"- Average area: {regions.geometry.area.mean() / 1000000:.1f} km²")
 
-        # Clean regions with appropriate threshold
+        # Clean regions with appropriate threshold (1 km²)
         min_area = 1000000  # 1 km² in square meters
         print(f"\nCleaning regions (removing regions < {min_area/1000000:.0f} km²)...")
         cleaned_regions = clean_regions(regions, min_area_threshold=min_area)
 
-        # Filter regions to keep only those with powerplants
+        # Save all cleaned regions (output 1: all regions with 1km² minimum)
+        print(f"\nSaving all cleaned regions to: {output_path_all}")
+        save_regions(cleaned_regions, output_path_all)
+
+        # Filter regions to keep only those with powerplants (output 2: regions without powerplants removed)
         powerplants_path = base_dir / "data" / "powerplants_s_100.csv"
         print(f"\nFiltering regions to keep only those with powerplants...")
         print(f"Using powerplants data from: {powerplants_path}")
-        final_regions = filter_regions_with_powerplants(cleaned_regions, powerplants_path)
+        regions_with_powerplants = filter_regions_with_powerplants(cleaned_regions, powerplants_path)
 
-        # Save results
-        save_regions(final_regions, output_path)
+        # Save regions with powerplants only
+        print(f"\nSaving regions with powerplants to: {output_path_no_powerplants}")
+        save_regions(regions_with_powerplants, output_path_no_powerplants)
 
         # Print final summary
         print("\n" + "=" * 60)
@@ -583,12 +592,20 @@ if __name__ == "__main__":
         print(f"Valid boundary features: {len(boundary_lines)}")
         print(f"Initial regions: {len(regions)}")
         print(f"Regions after cleaning: {len(cleaned_regions)}")
-        print(f"Final regions (with powerplants): {len(final_regions)}")
-        print(f"Output file: {output_path}")
+        print(f"Regions with powerplants: {len(regions_with_powerplants)}")
+        print(f"Output file (all regions): {output_path_all}")
+        print(f"Output file (powerplants only): {output_path_no_powerplants}")
 
-        if len(final_regions) > 1:
-            print("Final region details:")
-            for i, region in final_regions.iterrows():
+        if len(cleaned_regions) > 1:
+            print("\nAll regions summary:")
+            print(f"  - Total regions: {len(cleaned_regions)}")
+            area_range = [r.geometry.area / 1000000 for _, r in cleaned_regions.iterrows()]
+            print(f"  - Area range: {min(area_range):.1f} - {max(area_range):.1f} km²")
+            print(f"  - Average area: {sum(area_range)/len(area_range):.1f} km²")
+
+        if len(regions_with_powerplants) > 1:
+            print("\nRegions with powerplants details:")
+            for i, region in regions_with_powerplants.iterrows():
                 area_km2 = region.geometry.area / 1000000
                 powerplant_count = region.get('powerplant_count', 'N/A')
                 print(f"  - {region['region_id']}: {area_km2:.1f} km² ({powerplant_count} powerplants)")
