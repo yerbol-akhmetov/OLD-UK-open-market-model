@@ -440,12 +440,12 @@ def main():
         [14, 15, 25, 26, 27, 28, 29, 30, 35, 36, 37, 38], # Join 14, 15, 25, 26, 27, 28, 29, 30, 35, 36, 37, 38
         [62, 63, 86, 87, 88],                       # Join 62, 63, 86, 87, 88
         [65, 66, 67, 68, 69, 70, 71, 72, 73, 84],   # Join 65, 66, 67, 68, 69, 70, 71, 72, 73, 84
-        [10, '6wn', 11, 12],                        # Join 10, 11, 12, 6wn
+        [10, '6wn', 11, 12, '8w'],                  # Join 10, 11, 12, 6wn, 8w
         ['6e', '6ws', 7, 9],                        # Join 6e, 6ws, 7, 9
         [39, 99],                                   # Join 39, 99
         [74, 75, 76],                               # Join 74, 75, 76
         [4, '5w']                                   # Join 4, 5w
-        # Keep 46n and 5e as separate regions (no merge groups needed)
+        # Keep 46n, 5e, and 8e as separate regions (no merge groups needed)
     ]
     
     logger.info("Starting manual region merger with splitting")
@@ -463,6 +463,9 @@ def main():
         
         # Split region 5 vertically at longitude -1.93
         regions_gdf = split_region_vertical(regions_gdf, 5, -1.93)
+
+        # Split region 8 vertically at longitude -2.48
+        regions_gdf = split_region_vertical(regions_gdf, 8, -2.48)
 
         # Split region 46 horizontally at latitude 53
         region_46_mask = regions_gdf['numeric_id'] == 46
